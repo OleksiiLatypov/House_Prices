@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "house-prices "
+version = "0.1.0"
+description = "API from ML model"
+authors = ["oleksiilatypov <latypov.oleksii.la@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.110.2"
+uvicorn = "^0.29.0"
+catboost = "^1.2.5"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
