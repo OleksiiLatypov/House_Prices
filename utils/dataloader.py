@@ -58,7 +58,7 @@ class Dataloader:
         correlation_with_target = correlation_matrix['SalePrice'].abs().sort_values(ascending=False)
 
         highly_correlated = [column for column in correlation_with_target.index if
-                             correlation_with_target[column] > 0.4]
+                             correlation_with_target[column] > 0.25]
         columns_to_drop = ['1stFlrSF', 'GarageArea', 'TotRmsAbvGrd', 'GarageYrBlt']
         important_cat = self.map_feature(self.dataset)
         X = pd.concat([self.dataset[highly_correlated], important_cat], axis=1)
