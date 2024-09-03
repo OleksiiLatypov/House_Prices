@@ -54,6 +54,7 @@ class Estimator:
         print(rmse_scores)
         print(mean_rmse)
         print(X.shape)
+        print(X.columns)
         return 'Finish'
 
 
