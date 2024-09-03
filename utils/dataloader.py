@@ -58,7 +58,7 @@ class Dataloader:
         correlation_with_target = correlation_matrix['SalePrice'].abs().sort_values(ascending=False)
 
         highly_correlated = [column for column in correlation_with_target.index if
-                             correlation_with_target[column] > 0.25]
+                             correlation_with_target[column] > 0.35]
         columns_to_drop = ['1stFlrSF', 'GarageArea', 'TotRmsAbvGrd', 'GarageYrBlt']
         important_cat = self.map_feature(self.dataset)
         X = pd.concat([self.dataset[highly_correlated], important_cat], axis=1)
@@ -78,6 +78,26 @@ class Dataloader:
         test = pd.concat([fill_miss_vals, catecorical_features], axis=1)
         print(test.shape)
         return test
+
+    def preprocess_for_prediction(self, features):
+        heatingqc_mapping = {
+            'Ex': 4,
+            'Gd': 3,
+            'TA': 2,
+            'Fa': 1,
+            'Po': 0
+        }
+        kitchenqual_mapping = {
+            'Ex': 4,
+            'Gd': 3,
+            'TA': 2,
+            'Fa': 1,
+            'Po': 0
+        }
+        #data = pd.DataFrame([features.dict()])
+        features.loc[:, 'HeatingQC'] = features['HeatingQC'].map(heatingqc_mapping)
+        features.loc[:, 'KitchenQual'] = features['KitchenQual'].map(kitchenqual_mapping)
+        return features
 
 
 if __name__ == '__main__':
