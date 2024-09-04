@@ -1,6 +1,6 @@
 from typing import Optional, Union
 
-from settings.constants import TRAIN_CSV, SAVED_MODEL
+from settings.constants import Config
 from dataloader import Dataloader
 from sklearn.linear_model import LinearRegression
 import pandas as pd
@@ -20,7 +20,7 @@ import numpy as np
 class Estimator:
     def __init__(self, train_csv: Optional[Union[str, pd.DataFrame]] = None,
                  loader=None, scaler=None, model=None) -> None:
-        self.train_csv = train_csv if train_csv else pd.read_csv(TRAIN_CSV)
+        self.train_csv = train_csv if train_csv else pd.read_csv(Config.TRAIN_CSV)
         self.loader = loader if loader else Dataloader()
         self.scaler = scaler if scaler else MinMaxScaler()
         self.model = model
@@ -49,7 +49,7 @@ class Estimator:
 
         pipeline.fit(X, y)
 
-        joblib.dump(pipeline, SAVED_MODEL)
+        joblib.dump(pipeline, Config.SAVED_MODEL)
 
         print(rmse_scores)
         print(mean_rmse)
@@ -62,22 +62,3 @@ if __name__ == '__main__':
     e = Estimator()
     print(e.train())
 
-    # pipeline = Pipeline([('scaler', self.scaler), ('rf', self.model)])
-
-    # # Define k-fold cross-validation
-    # kf = KFold(n_splits=3, shuffle=True, random_state=49)
-
-    # # Use cross-validation to evaluate the model
-    # cv_scores = cross_val_score(pipeline, X, y, cv=kf, scoring=make_scorer(mean_squared_error))
-
-    # # Calculate RMSE for each fold and the mean RMSE
-    # rmse_scores = np.sqrt(cv_scores)
-    # mean_rmse = np.mean(rmse_scores)
-
-    # # Fit the pipeline on the entire dataset
-    # pipeline.fit(X, y)
-
-    # # Save the trained pipeline to a file
-    # joblib.dump(pipeline, '/workspaces/105818016/house_price/models/trained_pipeline.pkl')
-    # print(X.shape, y.shape)
-    # return f"RMSE: {mean_rmse}"

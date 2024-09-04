@@ -1,58 +1,51 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Path, Query, Depends
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse, StreamingResponse
 from typing import Optional
-from pydantic import BaseModel, PositiveInt, Field, PositiveFloat, validator, field_validator
+from pydantic import BaseModel, Field, validator
 import pandas as pd
-import pickle
-
-from settings.constants import SAVED_MODEL
-from utils.dataloader import Dataloader
-from catboost import CatBoostRegressor
-from datetime import datetime
-# from db import get_db, Prediction
-# from sqlalchemy.orm import Session
-# from sqlalchemy import text
 import joblib
-import io
 import os
+from datetime import datetime
 
-current_year = datetime.now().year
-# print(current_year)
-# Define a Pydantic model to validate the request body
-lst = ['OverallQual', 'GrLivArea', 'GarageCars', 'TotalBsmtSF', 'FullBath',
-       'YearBuilt', 'YearRemodAdd', 'MasVnrArea', 'Fireplaces', 'BsmtFinSF1',
-       'LotFrontage', 'HeatingQC', 'KitchenQual']
+from settings.constants import Config
+from utils.dataloader import loader
+from utils.upload_file import Uploader
+
+# Initialize constants
+# PROCESSED_DIR = "processed_files"
+# os.makedirs(PROCESSED_DIR, exist_ok=True)
+# current_year = datetime.now().year
 
 
 class HouseFeatures(BaseModel):
     OverallQual: Optional[int] = Field(6, ge=0, le=10)
-    GrLivArea: PositiveInt
+    GrLivArea: Optional[int] = Field(1460, ge=1)
     GarageCars: Optional[int] = Field(2, ge=0, le=10)
     TotalBsmtSF: Optional[float] = Field(1000, ge=0)
     FullBath: Optional[int] = Field(2, ge=0, le=5)
-    YearBuilt: Optional[int] = Field(1973, ge=1872, le=current_year)
-    YearRemodAdd: Optional[int] = Field(1994, ge=1950, le=current_year)
+    YearBuilt: Optional[int] = Field(1973, ge=1872, le=Config.current_year)
+    YearRemodAdd: Optional[int] = Field(1994, ge=1950, le=Config.current_year)
     MasVnrArea: Optional[int] = Field(0, ge=0)
     Fireplaces: Optional[int] = Field(2, ge=0)
-    BsmtFinSF1: Optional[int] = Field(None, ge=0)
-    LotFrontage: Optional[int] = Field(None, ge=0)
-    HeatingQC: Optional[str] = Field('Gd')
-    KitchenQual: Optional[str] = Field('Gd')
+    HeatingQC: Optional[str] = Field('Gd', pattern='^(Ex|Gd|TA|Fa|Po)$')
+    KitchenQual: Optional[str] = Field('Gd', pattern='^(Ex|Gd|TA|Fa|Po)$')
 
-    @field_validator('YearRemodAdd')
-    def check_year_remod_add(cls, value, info):
-        print(info)
-        if value < info.data['YearBuilt']:
+    @validator('YearRemodAdd')
+    def check_year_remod_add(cls, value, values):
+        if 'YearBuilt' in values and value < values['YearBuilt']:
             raise ValueError('YearRemodAdd must be greater than or equal to YearBuilt')
         return value
 
 
+# Initialize FastAPI app
 app = FastAPI()
 
-# Load your machine learning model from the pickle file
-loaded_pipeline = joblib.load(SAVED_MODEL)
+# Load machine learning model
 
-print(loaded_pipeline)
+try:
+    loaded_pipeline = joblib.load(Config.SAVED_MODEL)
+except Exception as e:
+    raise RuntimeError(f"Failed to load model: {e}")
 
 
 @app.get('/api/healthchecker')
@@ -60,42 +53,20 @@ def healthchecker():
     return {'message': 'Welcome'}
 
 
-@app.post('/api/predict')
+@app.post('/api/predict/')
 async def predict(features: HouseFeatures):
     """
     Endpoint to make predictions using the loaded ML model.
     Expects a JSON payload with the features required for prediction.
     """
-    loader = Dataloader()
-    # Extract features from the request data and format them for prediction
-    # features_list = [features.OverallQual, features.GrLivArea, features.GarageCars,
-    #                  features.TotalBsmtSF, features.FullBath, features.YearBuilt,
-    #                  features.YearRemodAdd, features.MasVnrArea, features.Fireplaces, features.BsmtFinSF1,
-    #                  features.LotFrontage, features.HeatingQC, features.KitchenQual]
-    features_dict = {
-        'OverallQual': [features.OverallQual],
-        'GrLivArea': [features.GrLivArea],
-        'GarageCars': [features.GarageCars],
-        'TotalBsmtSF': [features.TotalBsmtSF],
-        'FullBath': [features.FullBath],
-        'YearBuilt': [features.YearBuilt],
-        'YearRemodAdd': [features.YearRemodAdd],
-        'MasVnrArea': [features.MasVnrArea],
-        'Fireplaces': [features.Fireplaces],
-        'BsmtFinSF1': [features.BsmtFinSF1],
-        'LotFrontage': [features.LotFrontage],
-        'HeatingQC': [features.HeatingQC],
-        'KitchenQual': [features.KitchenQual]
-    }
-    # Make prediction using the loaded model
-    data_to_predict = pd.DataFrame(features_dict)
-    print(features_dict)
-    data_to_predict = loader.preprocess_for_prediction(data_to_predict)
-    print(data_to_predict)
-    prediction = loaded_pipeline.predict(data_to_predict)[0]
-
-    # Return the prediction
-    return {'prediction': prediction}
+    try:
+        features_dict = {k: [getattr(features, k)] for k in features.__fields__.keys()}
+        data_to_predict = pd.DataFrame(features_dict)
+        data_to_predict = loader.preprocess_for_prediction(data_to_predict)
+        prediction = loaded_pipeline.predict(data_to_predict)[0]
+        return {"prediction SalePrice": int(prediction)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {e}")
 
 
 @app.post("/api/predict_from_csv/")
@@ -104,56 +75,46 @@ async def predict_from_csv(file: UploadFile = File(...)):
     Endpoint to make predictions using the loaded ML model from a CSV file.
     Expects a CSV file upload containing the features required for prediction.
     """
-    # Read the CSV file
-    # df = pd.read_csv(file.file)
-    loader = Dataloader()
-    # preprocessed_df = loader.load()
-    # print(preprocessed_df)
+    X = Uploader.file_uploader(file.file)
     try:
-        df = pd.read_csv(file.file)
+        csv_prediction = loaded_pipeline.predict(X)
+        return {"predictions": csv_prediction.astype("int").tolist()}
     except Exception as e:
-        raise HTTPException(status_code=400, detail='Error reading csv file')
-    X = loader.preprocess_data(df)
-    csv_prediction = loaded_pipeline.predict(X)
-    print(csv_prediction)
-    return {"predictions": csv_prediction.tolist()}
-
-
-PROCESSED_DIR = "processed_files"
-os.makedirs(PROCESSED_DIR, exist_ok=True)
+        raise HTTPException(status_code=400, detail=f"Prediction failed, {e}")
 
 
 @app.post('/api/upload_and_preprocess')
 async def upload_for_predictions(file: UploadFile = File(...)):
-    # Read the uploaded CSV file into a DataFrame
-    df = pd.read_csv(file.file)
+    """
+    Endpoint to upload a CSV file, preprocess the data, and return predictions.
+    The result is returned as a downloadable CSV file.
+    """
+    X = Uploader.file_uploader(file.file)
+    try:
+        X_predictions = loaded_pipeline.predict(X)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Prediction failed, {e}")
+    X['predictions'] = X_predictions
+    try:
+        processed_filename = f"{Config.PROCESSED_DIR}/saleprice_predictions_for_{file.filename}"
+        X.to_csv(processed_filename, index=False)
 
-    # Preprocess the data
-    loader = Dataloader()
-    X = loader.preprocess_data(df)
-
-    # Make predictions
-    X_predictions = loaded_pipeline.predict(X)
-
-    # Add predictions to the original DataFrame
-    df['predictions'] = X_predictions
-
-    # Save the result to a new CSV file
-    processed_filename = f"{PROCESSED_DIR}/saleprice_predictions_for_{file.filename}"
-    df.to_csv(processed_filename, index=False)
-
-    # Return a response with a success message and the file download link
-    return {
-        "message": "File uploaded and preprocessed successfully!",
-        "download_link": f"/download/{os.path.basename(processed_filename)}"
-    }
+        return StreamingResponse(
+            open(processed_filename, "rb"),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={os.path.basename(processed_filename)}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to preprocess: {e}")
 
 
 @app.get("/download/{filename}")
 async def download_file_with_predictions(filename: str):
-    file_path = os.path.join(PROCESSED_DIR, filename)
+    """
+    Endpoint to download a CSV file containing predictions.
+    """
+    file_path = os.path.join(Config.PROCESSED_DIR, filename)
 
-    # Check if the file exists
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
 

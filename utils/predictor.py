@@ -1,23 +1,18 @@
-from settings.constants import TRAIN_CSV, SAVED_SCALER, VAL_CSV, SAVED_MODEL
+from settings.constants import Config
 from dataloader import Dataloader
 import pandas as pd
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import make_scorer, mean_squared_error
-from sklearn.model_selection import train_test_split, cross_val_score, KFold, ShuffleSplit
-from catboost import CatBoostRegressor
-from sklearn.preprocessing import MinMaxScaler
 import joblib
-import numpy as np
 
 
 class Predictor:
     def __init__(self):
         self.loader = Dataloader()
-        self.loaded_pipeline = joblib.load(SAVED_MODEL)
+        self.loaded_pipeline = joblib.load(Config.SAVED_MODEL)
+        self.test_data = pd.read_csv(Config.VAL_CSV)
 
     def test_model(self):
 
-        X_val = self.loader.preprocess_data()
+        X_val = self.loader.preprocess_data(self.test_data)
 
         test_first_row = self.loaded_pipeline.predict(X_val)
 
